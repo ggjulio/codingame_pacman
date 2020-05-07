@@ -1,1 +1,1 @@
-### codingame_quidditch
+### Spring challenge 2020
