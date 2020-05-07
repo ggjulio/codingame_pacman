@@ -24,6 +24,33 @@ class Player
     }
 }
 
+public abstract class Entity
+{
+	public Vector2 Position{get; set;}
+
+	public Entity(Vector2 position)
+	{
+		this.Position = position;
+	}
+
+	public void Update(Vector2 position)
+	{
+		this.Position = position;
+	}
+	public float Distance(Entity e)
+	{
+		return(Vector2.Distance(Position, e.Position));
+	}
+	public float Distance(Vector2 v)
+	{
+		return(Vector2.Distance(Position, v));
+	}
+	public override string ToString()
+	{
+		return ($"Entity(Position:{Position})");
+	}
+}
+
 public class Pac : Entity
 {
 	public int Id{get;}
@@ -58,7 +85,10 @@ public class Pac : Entity
 	{
 		Console.WriteLine($"MOVE {this.Id} {targetPosition.X} {targetPosition.Y}");
 	}
-
+	public override string ToString()
+	{
+		return $"Pac(Id:{Id};Mine:{Mine};Position:{Position};SpeedTurnsLeft:{SpeedTurnsLeft};AbilityCooldown:{AbilityCooldown})";
+	}
 }
 public class Pellet : Entity
 {
@@ -67,21 +97,6 @@ public class Pellet : Entity
 	public Pellet(Vector2 position, int value) : base(position)
 	{
 		this.Value = value;
-	}
-}
-
-public abstract class Entity
-{
-	public Vector2 Position{get; set;}
-
-	public Entity(Vector2 position)
-	{
-		this.Position = position;
-	}
-
-	public void Update(Vector2 position)
-	{
-		this.Position = position;
 	}
 }
 
@@ -148,9 +163,10 @@ public class Game{
 		
 		this.MyScore = int.Parse(inputs[0]);
 		this.OpponentScore = int.Parse(inputs[1]);
-		this.VisiblePacCount = int.Parse(Console.ReadLine()); // all your pacs and enemy pacs in sight
-		
+
 		/// LOOP PACS
+		this.VisiblePacCount = int.Parse(Console.ReadLine()); // all your pacs and enemy pacs in sight		
+		Debug("visible :" + VisiblePacCount.ToString());
 		for (int i = 0; i < this.VisiblePacCount; i++)
 		{
 			inputs = Console.ReadLine().Split(' ');
@@ -163,31 +179,59 @@ public class Game{
 			int abilityCooldown = int.Parse(inputs[6]); // unused in wood leagues
 
 			Pac pac = Pacs.Find(e => e.Id == pacId);
+			if (pac != null)
+				Debug(pac.ToString());
+			else
+				Debug("NULL");
 			if (pac == null)
 				this.Pacs.Add(new Pac(pacId, mine, position, typeId, speedTurnsLeft, abilityCooldown));
 			else
 				pac.Update(position, typeId, speedTurnsLeft, abilityCooldown);	
 		}
 
-		this.VisiblePelletCount = int.Parse(Console.ReadLine()); // all pellets in sight
-		
 		// LOOP PELLETS
+		this.VisiblePelletCount = int.Parse(Console.ReadLine()); // all pellets in sight
+		this.Pellets = new List<Pellet>(this.VisiblePelletCount);
+
 		for (int i = 0; i < this.VisiblePelletCount; i++)
 		{
 			inputs = Console.ReadLine().Split(' ');
 
 			Vector2 position = new Vector2(int.Parse(inputs[0]), int.Parse(inputs[1]));
 			int value = int.Parse(inputs[2]); // amount of points this pellet is worth
-			this.Pellets = new List<Pellet>(this.VisiblePelletCount);
 			this.Pellets.Add(new Pellet(position, value));
 		}
 
 	}
+
+
+	public static void Debug(string message)
+	{
+		Console.Error.WriteLine(message);
+	}
+
+	public List<Pac> GetMyPacs()
+	{
+		return this.Pacs.Where(e => e.Mine).OrderBy(e => e.Id).ToList();
+	}
+	public List<Pac> GetOpponentPacs()
+	{
+		return this.Pacs.Where(e => !e.Mine).OrderBy(e => e.Id).ToList();
+	}
+	public List<Pellet> GetPelletsNearest(Entity p_e)
+	{
+		return this.Pellets.OrderBy(e => e.Distance(p_e)).ToList();
+	}
 	public void Play()
 	{
-            // Write an action using Console.WriteLine()
-            // To debug: Console.Error.WriteLine("Debug messages...");
-
-            Console.WriteLine("MOVE 0 15 10"); // MOVE <pacId> <x> <y>
+//		Debug(GetOpponentPacs().First().ToString());
+		Debug(Pacs.Count().ToString());
+		foreach (Pac p in GetMyPacs())
+		{
+	//		Game.Debug(p.ToString());
+			p.Move(
+				GetPelletsNearest(p).First().Position
+			);
+		}
 	}
 }
