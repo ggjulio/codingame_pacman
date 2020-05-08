@@ -85,7 +85,7 @@ public class Pac : Entity
 
 	public void Move(Vector2 targetPosition)
 	{
-		Console.WriteLine($"MOVE {this.Id} {targetPosition.X} {targetPosition.Y}");
+		Console.Write($"MOVE {this.Id} {targetPosition.X} {targetPosition.Y}|");
 	}
 	public override string ToString()
 	{
@@ -124,18 +124,50 @@ public class Grid
 		this.Width = width;
 		this.Height = height;
 
-		this.Map = new Cell[Height, Width];
+		this.Map = new Cell[width, Height];
 		
         for (int i = 0; i < Height; i++)
         {
 			// one line of the grid: space " " is floor, pound "#" is wall
             string row = Console.ReadLine();
 		    for (int j = 0; j < Width; j++)
-				Map[i,j] = new Cell(row[j]);
+				Map[j,i] = new Cell(row[j]);
         }
 
 	}
+	public void Update(List<Pac> pacs, List<Pellet> pellets)
+	{
+		foreach (Cell c in Map)
+			c.Inside = null;
+		foreach (Pellet p in pellets)
+			Map[(int)p.Position.X, (int)p.Position.Y].Inside = p;
+		foreach (Pac p in pacs)
+			Map[(int)p.Position.X, (int)p.Position.Y].Inside = p;
+	}
+	public override string ToString()
+	{
+		string result = "";
 
+		for (int i = 0; i < this.Height; i++)
+		{
+			for (int j = 0; j < this.Width; j++)
+			{
+				if (this.Map[j, i].Inside != null)
+				{
+					if (this.Map[j,i].Inside is Pac pa)
+						result += pa.Id;
+					else if (this.Map[j, i].Inside is Pellet pe)
+						result += "-";
+					else
+						result += "!";
+				}
+				else
+					result += this.Map[j, i].IsFloor ? " " : "#";			
+			}
+			result += "\n";
+		}
+		return result;
+	}
 }
 
 public class Game{
@@ -199,7 +231,7 @@ public class Game{
 			int value = int.Parse(inputs[2]); // amount of points this pellet is worth
 			this.Pellets.Add(new Pellet(position, value));
 		}
-
+		this.Grid.Update(this.Pacs, this.Pellets);
 	}
 
 
@@ -222,14 +254,39 @@ public class Game{
 	}
 	public void Play()
 	{
+		// reset target pellet if pellet not existing anymore
+		foreach (Pac pa in GetMyPacs().Where(p => p.TargetPellet != null).ToList())
+			if (!Pellets.Any(pe => pe.Position == pa.TargetPellet.Position))		
+				pa.TargetPellet = null;
 
+		// IF big pellets
+		List<Pellet> bigPellets = Pellets.Where(p => p.Value == 10).ToList();
+		foreach (Pellet pe in bigPellets)
+		{
+			Pac pa = GetMyPacs().OrderBy(p => p.Distance(pe)).First();
+
+			if (pa.TargetPellet == null || pe.Distance(pa) < pa.TargetPellet.Distance(pa))
+				pa.TargetPellet = pe;
+		}
+		//Debug(Grid.ToString());
 		foreach (Pac p in GetMyPacs())
 		{
-			
-			if (p.TargetPellet == null || p.TargetPellet.Position == p.Position)
-				p.TargetPellet = GetPelletsNearest(p).First();
-			p.Move(p.TargetPellet.Position
-			);
+			if (p.TargetPellet == null)
+			{
+				List<Pellet>  AlreadyTargeted = GetMyPacs().Select(e => e.TargetPellet).Where(e => e != null).ToList();
+
+				p.TargetPellet = GetPelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault();
+				
+				
+				if (p.TargetPellet == null)
+					p.TargetPellet = GetPelletsNearest(p).FirstOrDefault();
+
+			}
+			if (p.TargetPellet != null)
+				p.Move(p.TargetPellet.Position);
+			else
+				p.Move(p.Position);
 		}
+		Console.WriteLine();
 	}
 }
