@@ -61,7 +61,6 @@ public class Pac : Entity
 	public int AbilityCooldown{get;set;}
 
 	public Pellet TargetPellet{get;set;}
-	public bool	IsAlive{get;set;}
 
 	public Pac(int id, bool mine, Vector2 position, string typeId,
 		int speedTurnsLeft, int abilityCooldown) : base(position)
@@ -82,7 +81,6 @@ public class Pac : Entity
 		this.TypeId = typeId;
 		this.SpeedTurnsLeft = speedTurnsLeft;
 		this.AbilityCooldown = abilityCooldown;
-		this.IsAlive = true;
 	}
 
 	public void Move(Vector2 targetPosition)
@@ -199,10 +197,7 @@ public class Game{
 		
 		this.MyScore = int.Parse(inputs[0]);
 		this.OpponentScore = int.Parse(inputs[1]);
-		
-		// Reset is alive to false foreach pac
-		foreach (Pac p in Pacs)
-			p.IsAlive = false;
+
 		/// LOOP PACS
 		this.VisiblePacCount = int.Parse(Console.ReadLine()); // all your pacs and enemy pacs in sight		
 
