@@ -50,6 +50,67 @@ public abstract class Entity
 		return ($"Entity(Position:{Position})");
 	}
 }
+public enum eSwitch{
+	Rock,
+	Paper,
+	Scissors,
+}
+public enum eAction{
+	None,
+	Move,
+	Speed,
+	Switch
+}
+public class Action
+{
+	public eAction Type{get;set;}
+	public bool HasAction{get;set;}
+	public bool IsMove{get;set;}
+	public Vector2	TargetPosition{get;set;}
+	public Entity  TargetEntity{get;set;}
+	public eSwitch TargetSwitch{get;set;}
+
+	public Action()
+	{
+		this.Type = eAction.None;
+		this.HasAction = false;
+		this.IsMove = false;
+	}
+	public Action(eAction type)
+	{
+		this.Type = type;
+		this.HasAction =  type != eAction.None ? true : false;
+		this.IsMove = type == eAction.Move ? true : false;
+	}
+	public Action(Vector2 targetPosition)
+	{
+		this.Type = eAction.Move;
+		this.TargetPosition = targetPosition;
+		this.HasAction = true;
+		this.IsMove = true;
+	}
+	public Action(Entity targetEntity)
+	{
+		if (targetEntity == null)
+		{
+			this.Type = eAction.None;
+			this.HasAction = false;
+			return;
+		}
+		this.Type = eAction.Move;
+		this.TargetPosition = targetEntity.Position;
+		this.TargetEntity = targetEntity;
+		this.HasAction = true;
+		this.IsMove = true;
+	}
+	public Action(eSwitch targetSwitch)
+	{
+		this.Type = eAction.Switch;
+		this.TargetSwitch = targetSwitch;
+		this.HasAction = true;
+		this.IsMove = false;
+	}
+}
 
 public class Pac : Entity
 {
@@ -59,9 +120,8 @@ public class Pac : Entity
 	public string TypeId{get;set;}
 	public int SpeedTurnsLeft{get;set;}
 	public int AbilityCooldown{get;set;}
-
-	public Pellet TargetPellet{get;set;}
 	public bool	IsAlive{get;set;}
+	public Action Action{get;set;}
 
 	public Pac(int id, bool mine, Vector2 position, string typeId,
 		int speedTurnsLeft, int abilityCooldown) : base(position)
@@ -74,6 +134,7 @@ public class Pac : Entity
 		this.SpeedTurnsLeft = speedTurnsLeft;
 		this.AbilityCooldown = abilityCooldown;
 		this.IsAlive = true;
+		this.Action = new Action();
 	}
 
 	public void Update(Vector2 position, string typeId, int speedTurnsLeft, int abilityCooldown)
@@ -88,13 +149,47 @@ public class Pac : Entity
 
 	public void Move(Vector2 targetPosition)
 	{
-		Console.Write($"MOVE {this.Id} {targetPosition.X} {targetPosition.Y}|");
+		this.Action = new Action(targetPosition);
+	}
+	public void Move(Entity targetEntity)
+	{
+		this.Action = new Action(targetEntity);
+	}
+	public void Switch(eSwitch targetType)
+	{
+		this.Action = new Action(targetType);
+	}
+	public void Speed()
+	{
+		this.Action = new Action(eAction.Speed);
+	}
+	public void ExecuteAction()
+	{
+		if (!this.IsAlive)
+			return;
+		switch (this.Action.Type)
+		{
+			case eAction.Move:
+				Console.Write($"MOVE {this.Id} {this.Action.TargetPosition.X} {this.Action.TargetPosition.Y} |");
+				break;
+			case eAction.Switch:
+				Console.Write($"SWITCH {this.Id} {this.Action.TargetSwitch.ToString()} |");
+				break;
+			case eAction.Speed:
+				Console.Write($"SPEED {this.Id} |");
+				break;
+			default:
+				Console.Write($"MOVE {this.Id} {this.Position.X} {this.Position.Y} |");
+				break;
+		}
 	}
 	public override string ToString()
 	{
 		return $"Pac(Id:{Id};Mine:{Mine};Position:{Position};SpeedTurnsLeft:{SpeedTurnsLeft};AbilityCooldown:{AbilityCooldown})";
 	}
+
 }
+
 public class Pellet : Entity
 {
 	public int Value {get;}
@@ -219,20 +314,18 @@ public class Grid
 
 public class Game{
 	public Grid Grid{get;set;}
-	public int MyScore {get; set;}
-	public int OpponentScore {get; set;}
-	public int VisiblePacCount {get; set;}
+	public int MyScore{get;set;}
+	public int OpponentScore{get;set;}
+	public int VisiblePacCount{get;set;}
 	public List<Pac> Pacs{get;set;}
-	public int VisiblePelletCount {get; set;}
+	public int VisiblePelletCount{get;set;}
 	public List<Pellet> Pellets{get;set;}
 
 	public Game()
 	{
 		string[] inputs = Console.ReadLine().Split(' ');
-
         int width = int.Parse(inputs[0]); // size of the grid
         int height = int.Parse(inputs[1]); // top left corner is (x=0, y=0)
-
 		this.Grid = new Grid(width,height);
 		this.Pacs = new List<Pac>(10); // 10 pacman max (5 by team)
 	}
@@ -283,7 +376,6 @@ public class Game{
 		this.Grid.Update(this.Pacs, this.Pellets);
 	}
 
-
 	public static void Debug(string message)
 	{
 		Console.Error.WriteLine(message);
@@ -295,53 +387,59 @@ public class Game{
 	}
 	public List<Pac> GetOpponentPacs()
 	{
-		return this.Pacs.Where(e => !e.Mine).OrderBy(e => e.Id).ToList();
+		return this.Pacs.Where(e => !e.Mine && e.IsAlive).OrderBy(e => e.Id).ToList();
 	}
 	public List<Pellet> GetPelletsNearest(Entity p_e)
 	{
 		return this.Pellets.OrderBy(e => e.Distance(p_e)).ToList();
 	}
+	void ExecuteActions()
+	{
+		GetMyPacs().ForEach(p => p.ExecuteAction());
+		Console.WriteLine();
+	}
 	public void Play()
 	{
-		// reset target pellet if pellet not existing anymore
-		foreach (Pac pa in GetMyPacs().Where(p => p.TargetPellet != null).ToList())
-			if (!Pellets.Any(pe => pe.Position == pa.TargetPellet.Position))		
-				pa.TargetPellet = null;
+		// reset target pellet if pellet not target not exist anymore
+		foreach (Pac pa in GetMyPacs().Where(p => p.Action.HasAction).ToList())
+			if (!Pellets.Any(pe => pe.Position == pa.Action.TargetPosition))
+				pa.Action = new Action();
+		// If can speed, we speed
+		GetMyPacs().FindAll(p => p.AbilityCooldown == 0).ForEach(p => p.Speed());
 
-		// IF big pellets
+		// IF there is big pellets, go get them
 		List<Pellet> bigPellets = Pellets.Where(p => p.Value == 10).ToList();
 		foreach (Pellet pe in bigPellets)
 		{
 			Pac pa = GetMyPacs().OrderBy(p => p.Distance(pe)).First();
 
-			if (pa.TargetPellet == null || pe.Distance(pa) < pa.TargetPellet.Distance(pa))
-				pa.TargetPellet = pe;
+			if (!pa.Action.HasAction || pe.Distance(pa) < pa.Distance(pa.Action.TargetPosition))
+			{
+				pa.Move(pe);
+			}
 		}
-		Debug(Grid.ToString());
+		// Else set the nearest not targeted pellet
 		foreach (Pac p in GetMyPacs())
 		{
-			if (p.TargetPellet == null)
+			if (!p.Action.HasAction)
 			{
-				List<Pellet>  AlreadyTargeted = GetMyPacs().Select(e => e.TargetPellet).Where(e => e != null).ToList();
+				List<Pellet>  AlreadyTargeted = GetMyPacs().Select(e => e.Action.TargetEntity).Where(e => e != null).Cast<Pellet>().ToList();
 
-				p.TargetPellet = GetPelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault();
+				p.Move(GetPelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault());
 				
-				if (p.TargetPellet == null)
-					p.TargetPellet = GetPelletsNearest(p).FirstOrDefault();
+				if (!p.Action.HasAction)
+					p.Move(GetPelletsNearest(p).FirstOrDefault());
 			}
-
-			if (p.TargetPellet != null)
-				p.Move(p.TargetPellet.Position);
-			else
+			// If can't see pellets go where we never go
+			if (!p.Action.HasAction)
 			{
 				Cell target = Grid.Map.Cast<Cell>().Where(e => e.HasPellet).OrderBy(e => p.Distance(e.Position)).FirstOrDefault();
 
 				if (target != null)
 					p.Move(target.Position);
-				else
-					p.Move(p.Position);
 			}
 		}
-		Console.WriteLine();
+
+		this.ExecuteActions();
 	}
 }
