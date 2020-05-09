@@ -121,6 +121,7 @@ public class Pac : Entity
 	public int SpeedTurnsLeft{get;set;}
 	public int AbilityCooldown{get;set;}
 	public bool	IsAlive{get;set;}
+	public string Label{get;set;}
 	public Action Action{get;set;}
 
 	public Pac(int id, bool mine, Vector2 position, string typeId,
@@ -170,16 +171,16 @@ public class Pac : Entity
 		switch (this.Action.Type)
 		{
 			case eAction.Move:
-				Console.Write($"MOVE {this.Id} {this.Action.TargetPosition.X} {this.Action.TargetPosition.Y} |");
+				Console.Write($"MOVE {this.Id} {this.Action.TargetPosition.X} {this.Action.TargetPosition.Y} {this.Label}|");
 				break;
 			case eAction.Switch:
-				Console.Write($"SWITCH {this.Id} {this.Action.TargetSwitch.ToString()} |");
+				Console.Write($"SWITCH {this.Id} {this.Action.TargetSwitch.ToString()} {this.Label}|");
 				break;
 			case eAction.Speed:
-				Console.Write($"SPEED {this.Id} |");
+				Console.Write($"SPEED {this.Id} {this.Label}|");
 				break;
 			default:
-				Console.Write($"MOVE {this.Id} {this.Position.X} {this.Position.Y} |");
+				Console.Write($"MOVE {this.Id} {this.Position.X} {this.Position.Y} BUG !|");
 				break;
 		}
 	}
@@ -187,7 +188,6 @@ public class Pac : Entity
 	{
 		return $"Pac(Id:{Id};Mine:{Mine};Position:{Position};SpeedTurnsLeft:{SpeedTurnsLeft};AbilityCooldown:{AbilityCooldown})";
 	}
-
 }
 
 public class Pellet : Entity
@@ -244,6 +244,7 @@ public class Grid
 			c.Inside = null;
 			c.IsVisiblePellet = false;
 		}
+		// To set Has pellet to false when the grid is discovered.
 		foreach (Pac p in pacs.Where(e => e.Mine).ToList())
 		{
 			for (int i = 1; p.Position.X + i < this.Width && Map[(int)p.Position.X + i, (int)p.Position.Y].IsWalkable; i++)
@@ -256,7 +257,7 @@ public class Grid
 			for (int i = -1; p.Position.Y + i > 0 && Map[(int)p.Position.X, (int)p.Position.Y + i].IsWalkable; i--)
 				Map[(int)p.Position.X, (int)p.Position.Y + i].HasPellet = false;
 		}
-
+		// to save visible pellets into grid
 		foreach (Pellet p in pellets)
 		{
 			Map[(int)p.Position.X, (int)p.Position.Y].Inside = p;
@@ -264,11 +265,11 @@ public class Grid
 			Map[(int)p.Position.X, (int)p.Position.Y].IsVisiblePellet = true;
 
 		}
+		// To save visible pacman in grid
 		foreach (Pac p in pacs)
 		{
 			Map[(int)p.Position.X, (int)p.Position.Y].Inside = p;
 			Map[(int)p.Position.X, (int)p.Position.Y].HasPellet = false;
-
 		}
 	}
 
@@ -329,7 +330,6 @@ public class Game{
 		this.Grid = new Grid(width,height);
 		this.Pacs = new List<Pac>(10); // 10 pacman max (5 by team)
 	}
-
 	public void Sync()
 	{
 		string[] inputs = Console.ReadLine().Split(' ');
@@ -375,12 +375,10 @@ public class Game{
 		}
 		this.Grid.Update(this.Pacs, this.Pellets);
 	}
-
 	public static void Debug(string message)
 	{
 		Console.Error.WriteLine(message);
 	}
-
 	public List<Pac> GetMyPacs()
 	{
 		return this.Pacs.Where(e => e.Mine && e.IsAlive).OrderBy(e => e.Id).ToList();
@@ -393,6 +391,44 @@ public class Game{
 	{
 		return this.Pellets.OrderBy(e => e.Distance(p_e)).ToList();
 	}
+
+	public bool IsDirectPath(Entity e1, Entity e2)
+	{
+		int min;
+		int max;
+
+		if (e1.Position.X == e2.Position.X)
+		{
+			min = (int)Math.Min(e1.Position.Y, e2.Position.Y);
+			max = (int)Math.Max(e1.Position.Y, e2.Position.Y);
+			while (++min < max)
+				if (
+					!Grid.Map[(int)e1.Position.X, min].IsWalkable 
+					|| (Grid.Map[(int)e1.Position.X, min].Inside is Pac p1 && p1.Mine)
+				)
+					return false;
+			return true;
+		}
+		else if (e1.Position.Y == e2.Position.Y)
+		{
+			min = (int)Math.Min(e1.Position.X, e2.Position.X);
+			max = (int)Math.Max(e1.Position.X, e2.Position.X);
+			while (++min < max)
+				if (
+					!Grid.Map[min, (int)e1.Position.Y].IsWalkable 
+					|| (Grid.Map[min, (int)e1.Position.Y].Inside is Pac p1 && p1.Mine)
+				)
+					return false;
+			return true;
+		}
+		else
+			return false;
+	}
+	public List<Pellet> GetVisiblePelletsNearest(Entity p_e)
+	{
+		return this.Pellets.Where(e => this.IsDirectPath(e, p_e) ).OrderBy(e => e.Distance(p_e)).ToList();
+	}
+
 	void ExecuteActions()
 	{
 		GetMyPacs().ForEach(p => p.ExecuteAction());
@@ -402,7 +438,10 @@ public class Game{
 	{
 		// reset target pellet if pellet not target not exist anymore
 		foreach (Pac pa in GetMyPacs().Where(p => p.Action.HasAction).ToList())
-			if (!Pellets.Any(pe => pe.Position == pa.Action.TargetPosition))
+/// ////////////////////////////////////??HEREEEEEEEEEEEEEEEEEEEEEEEEEEEEEE/EEEEEEEEEEEEE
+/// ///////////////////////////////////////////////////////////////////////
+			// if (!Pellets.Any(pe => pe.Position == pa.Action.TargetPosition))
+			if (!Grid.Map[(int)pa.Action.TargetPosition.X, (int)pa.Action.TargetPosition.Y].HasPellet)
 				pa.Action = new Action();
 
 		// IF there is big pellets, go get them
@@ -412,9 +451,7 @@ public class Game{
 			Pac pa = GetMyPacs().OrderBy(p => p.Distance(pe)).First();
 
 			if (!pa.Action.HasAction || pe.Distance(pa) < pa.Distance(pa.Action.TargetPosition))
-			{
 				pa.Move(pe);
-			}
 		}
 		// Else set the nearest not targeted pellet
 		foreach (Pac p in GetMyPacs())
@@ -423,16 +460,29 @@ public class Game{
 			{
 				List<Pellet>  AlreadyTargeted = GetMyPacs().Select(e => e.Action.TargetEntity).Where(e => e != null).Cast<Pellet>().ToList();
 
-				p.Move(GetPelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault());
-				
+//				p.Move(GetPelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault());
+				p.Move(GetVisiblePelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault());
+				// if (p.Id == 3 && GetPelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault() != null)
+				if (p.Id == 3 && GetVisiblePelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault() != null)
+					if (!this.IsDirectPath(p, GetVisiblePelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault()))
+						Debug("NOT DIRECT PATH");
+					else
+						Debug("DIRECT PATH");
+	
 				if (!p.Action.HasAction)
-					p.Move(GetPelletsNearest(p).FirstOrDefault());
+					p.Move(GetVisiblePelletsNearest(p).FirstOrDefault());
 			}
 			// If can't see pellets go where we never go
 			if (!p.Action.HasAction)
 			{
 				Cell target = Grid.Map.Cast<Cell>().Where(e => e.HasPellet).OrderBy(e => p.Distance(e.Position)).FirstOrDefault();
-
+			
+				if(p.Id == 3)
+				{
+					Debug("HERE GRID search");
+					Debug(Grid.ToString());
+				}
+			
 				if (target != null)
 					p.Move(target.Position);
 			}
@@ -440,6 +490,13 @@ public class Game{
 
 		// If can speed, Override and speed
 		GetMyPacs().FindAll(p => p.AbilityCooldown == 0).ForEach(p => p.Speed());
+		
+		//Say Hi
+		foreach (Pac p in GetMyPacs())
+		{
+			if (GetOpponentPacs().Any(o => this.IsDirectPath(p, o)))
+				p.Label = "Hi !";
+		}
 
 		this.ExecuteActions();
 	}
