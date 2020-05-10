@@ -485,19 +485,11 @@ public class Game{
 
 	public void Play()
 	{
-		Debug(Grid.ToString());
-		Debug(Grid.Map[5,9].ToString());
-		Debug(Grid.Map[13,3].ToString());
 		// reset target pellet if pellet not target not exist anymore
 		foreach (Pac pa in GetMyPacs().Where(p => p.Action.HasAction).ToList())
 		{
 			if (!Grid.Map[(int)pa.Action.TargetPosition.X, (int)pa.Action.TargetPosition.Y].HasPellet)
-			{
-				Debug($"YES ! {pa.Id} target{pa.Action.TargetPosition}");
 				pa.Action = new Action();
-			}
-			else
-				Debug($"NO  ! {pa.Id} target{pa.Action.TargetPosition}");
 		}
 
 		// IF there is BIG pellets, go get them
@@ -505,7 +497,6 @@ public class Game{
 		foreach (Pellet pe in bigPellets)
 		{
 			Pac pa = GetMyPacs().OrderBy(p => p.Distance(pe)).First();
-
 			if (!pa.Action.HasAction || pe.Distance(pa) < pa.Distance(pa.Action.TargetPosition))
 				pa.Move(pe);
 		}
@@ -528,7 +519,6 @@ public class Game{
 			{
 				List<Entity> AlreadyTargeted = GetMyPacs().Where(e => e.Id != p.Id).Select(e => e.Action.TargetEntity).ToList();
 
-//				Cell target = Grid.Map.Cast<Cell>().Where(e => e.HasPellet).OrderBy(e => p.Distance(e.Position)).FirstOrDefault();
 				var  target = Grid.Map.Cast<Cell>().Where(e => e.HasPellet).Select(e => e.Inside).Cast<Pellet>()
 										.Except(AlreadyTargeted).OrderBy(e => p.Distance(e.Position)).FirstOrDefault();
 				if (target != null)
