@@ -52,9 +52,9 @@ public abstract class Entity
 	}
 }
 public enum eSwitch{
-	Rock,
-	Paper,
-	Scissors,
+	ROCK,
+	SCISSORS,
+	PAPER,
 }
 public enum eAction{
 	None,
@@ -119,11 +119,13 @@ public class Pac : Entity
 	public bool Mine{get;}
 	public List<Vector2> Positions{get;set;}
 	public string TypeId{get;set;}
+	public eSwitch Type{get;set;}
 	public int SpeedTurnsLeft{get;set;}
 	public int AbilityCooldown{get;set;}
 	public bool	IsAlive{get;set;}
 	public string Label{get;set;}
 	public Action Action{get;set;}
+	public Action PreviousAction{get;set;}
 
 	public Pac(int id, bool mine, Vector2 position, string typeId,
 		int speedTurnsLeft, int abilityCooldown) : base(position)
@@ -133,6 +135,7 @@ public class Pac : Entity
 		this.Positions = new List<Vector2>();
 		this.Positions.Add(position);
 		this.TypeId = typeId;
+		this.Type = (eSwitch)Enum.Parse(typeof(eSwitch), typeId);
 		this.SpeedTurnsLeft = speedTurnsLeft;
 		this.AbilityCooldown = abilityCooldown;
 		this.IsAlive = true;
@@ -144,6 +147,7 @@ public class Pac : Entity
 		base.Update(position);
 		Positions.Add(position);
 		this.TypeId = typeId;
+		this.Type = (eSwitch)Enum.Parse(typeof(eSwitch), typeId);
 		this.SpeedTurnsLeft = speedTurnsLeft;
 		this.AbilityCooldown = abilityCooldown;
 		this.IsAlive = true;
@@ -162,6 +166,15 @@ public class Pac : Entity
 	{
 		this.Action = new Action(targetType);
 	}
+	public void SwitchClockwise()
+	{
+		this.Action = new Action((int)(this.Type + 1) > 2 ? 0 : this.Type + 1);
+	}
+	public void SwitchCounterClockwise()
+	{
+		this.Action = new Action((int)(this.Type - 1) < 0 ? (eSwitch)2 : this.Type - 1);
+	}
+	
 	public void Speed()
 	{
 		this.Action = new Action(eAction.Speed);
@@ -185,6 +198,7 @@ public class Pac : Entity
 				Console.Write($"MOVE {this.Id} {this.Position.X} {this.Position.Y} BUG !|");
 				break;
 		}
+		this.PreviousAction = this.Action;
 	}
 	public override string ToString()
 	{
@@ -541,6 +555,40 @@ public class Game{
 			if (GetOpponentPacs().Any(o => this.IsDirectPath(p, o)))
 				p.Label = "Hi !";
 		}
+		
+		
+
+
+
+
+
+
+
+
+
+
+		// foreach (Pac p in GetMyPacs())
+		// {
+		// 	p.Label = p.Type.ToString();
+		// }
+
+
+		// foreach (Pac p in GetMyPacs())
+		// {
+		// 	// if (p.Positions.Count() < 3)
+		// 	// 	continue;
+		// 	List<Vector2> lastPos = p.Positions.TakeLast(3).ToList();
+		
+		// 	// Debug(lastPos.First().ToString());
+		// 	// Debug(lastPos.Last().ToString());
+		// 	Debug( "HERE " + lastPos.Count().ToString());
+		// 	// Debug(p.Positions.Count().ToString());
+		// 	if (lastPos.Count() == 3 && p.PreviousAction.Type != eAction.Switch
+		// 	&&  lastPos.First() == lastPos.Last()
+		// 	&&  lastPos.First() == lastPos.Skip(1).First()
+		// 	)
+		// 		p.SwitchClockwise();
+		// }
 
 		this.ExecuteActions();
 	}
