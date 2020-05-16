@@ -7,10 +7,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
 
-
-/**
- * Grab the pellets as fast as you can!
- **/
 class Player
 {
     static void Main(string[] args)
@@ -38,14 +34,24 @@ public abstract class Entity
 	{
 		this.Position = position;
 	}
-	public float Distance(Entity e)
+	// public float Distance(Game game, Entity e)
+	// {
+	// 	return(Vector2.Distance(Position, e.Position));
+	// }
+	// public float Distance(Game game, Vector2 v)
+	// {
+	// 	return(Vector2.Distance(Position, v));
+	// }
+
+	public float Distance(Game game, Entity e)
 	{
-		return(Vector2.Distance(Position, e.Position));
+		return (float)game.BfsDepth(this.Position, e.Position);
 	}
-	public float Distance(Vector2 v)
+	public float Distance(Game game, Vector2 v)
 	{
-		return(Vector2.Distance(Position, v));
+		return (float)game.BfsDepth(this.Position, v);
 	}
+	
 	public override string ToString()
 	{
 		return ($"Entity(Position:{Position})");
@@ -118,7 +124,7 @@ public class Pac : Entity
 {
 	public int Id{get;}
 	public bool Mine{get;}
-	public List<Vector2> Positions{get;set;}
+	public List<(ushort Turn, Vector2 Position)> Positions{get;set;}
 	public string TypeId{get;set;}
 	public eSwitch Type{get;set;}
 	public int SpeedTurnsLeft{get;set;}
@@ -128,30 +134,30 @@ public class Pac : Entity
 	public Action Action{get;set;}
 	public Action PreviousAction{get;set;}
 
-	public Pac(int id, bool mine, Vector2 position, string typeId,
+	public Pac(int id, bool mine, ushort turn, Vector2 position, string typeId,
 		int speedTurnsLeft, int abilityCooldown) : base(position)
 	{
 		this.Id = id;
 		this.Mine = mine;
-		this.Positions = new List<Vector2>();
-		this.Positions.Add(position);
+		this.Positions = new List<(ushort, Vector2)>();
+		this.Positions.Insert(0, (turn, position));
 		this.TypeId = typeId;
 		this.Type = (eSwitch)Enum.Parse(typeof(eSwitch), typeId);
 		this.SpeedTurnsLeft = speedTurnsLeft;
 		this.AbilityCooldown = abilityCooldown;
-		this.IsAlive = true;
+		this.IsAlive = this.Type != eSwitch.DEAD ? true : false;
 		this.Action = new Action();
 	}
 
-	public void Update(Vector2 position, string typeId, int speedTurnsLeft, int abilityCooldown)
+	public void Update(ushort turn, Vector2 position, string typeId, int speedTurnsLeft, int abilityCooldown)
 	{
 		base.Update(position);
-		Positions.Add(position);
+		this.Positions.Insert(0, (turn, position));
 		this.TypeId = typeId;
 		this.Type = (eSwitch)Enum.Parse(typeof(eSwitch), typeId);
 		this.SpeedTurnsLeft = speedTurnsLeft;
 		this.AbilityCooldown = abilityCooldown;
-		this.IsAlive = true;
+		this.IsAlive = this.Type != eSwitch.DEAD ? true : false;
 		this.Label = "";
 	}
 
@@ -352,6 +358,29 @@ public class Grid
 		}
 		return result;
 	}
+	public List<Vector2> GetWalkableNeibours(Vector2 v)
+	{
+		List<Vector2> result = new List<Vector2>();
+
+		//                         Left, Right, Down,  Up,
+		int[] dirRow = new int[4] {  -1,    +1,    0,   0};
+		int[] dirCol = new int[4] {   0,     0,   +1,  -1};
+
+		for (int i = 0; i < 4; i++)
+		{
+			int rr = (int)v.X + dirRow[i];
+			int cc = (int)v.Y + dirCol[i];
+
+			if (rr < 0)
+				result.Add(new Vector2(Width - 1, cc)); // tunnel
+			else if (rr == this.Width)
+				result.Add(new Vector2(0, cc)); 		// tunnel
+			else if (this.Map[rr,cc].IsWalkable)
+				result.Add(new Vector2(rr, cc));
+	
+		}
+		return (result);
+	}
 }
 
 public class Game{
@@ -363,6 +392,7 @@ public class Game{
 	public int VisiblePelletCount{get;set;}
 	public List<Pellet> Pellets{get;set;}
 	public Stopwatch StopWatch{get;set;}
+	public ushort Turn{get;set;}
 
 	public Game()
 	{
@@ -372,13 +402,12 @@ public class Game{
 		this.Grid = new Grid(width,height);
 		this.Pacs = new List<Pac>(10); // 10 pacman max (5 by team)
 		this.StopWatch = new Stopwatch();
+		this.Turn = 0;
 	}
 	public void Sync()
 	{
 		string[] inputs = Console.ReadLine().Split(' ');
-
 		this.StopWatch.Restart();
-		
 		this.MyScore = int.Parse(inputs[0]);
 		this.OpponentScore = int.Parse(inputs[1]);
 		
@@ -400,9 +429,9 @@ public class Game{
 
 			Pac pac = Pacs.Find(e => e.Id == pacId && e.Mine == mine);
 			if (pac == null)
-				this.Pacs.Add(new Pac(pacId, mine, position, typeId, speedTurnsLeft, abilityCooldown));
+				this.Pacs.Add(new Pac(pacId, mine, this.Turn, position, typeId, speedTurnsLeft, abilityCooldown));
 			else
-				pac.Update(position, typeId, speedTurnsLeft, abilityCooldown);	
+				pac.Update(this.Turn, position, typeId, speedTurnsLeft, abilityCooldown);	
 		}
 
 		// LOOP PELLETS
@@ -433,11 +462,11 @@ public class Game{
 	}
 	public List<Pellet> GetPelletsNearest(Entity p_e)
 	{
-		return this.Pellets.OrderBy(e => e.Distance(p_e)).ToList();
+		return this.Pellets.OrderBy(e => e.Distance(this, p_e)).ToList();
 	}
 	public List<Pellet> GetPelletsNearest(Vector2 p_v)
 	{
-		return this.Pellets.OrderBy(e => e.Distance(p_v)).ToList();
+		return this.Pellets.OrderBy(e => e.Distance(this, p_v)).ToList();
 	}
 	public bool IsDirectPath(Entity e1, Entity e2)
 	{
@@ -473,14 +502,15 @@ public class Game{
 	}
 	public List<Pellet> GetVisiblePelletsNearest(Entity p_e)
 	{
-		return this.Pellets.Where(e => this.IsDirectPath(e, p_e) ).OrderBy(e => e.Distance(p_e)).ToList();
+		return this.Pellets.Where(e => this.IsDirectPath(e, p_e) ).OrderBy(e => e.Distance(this, p_e)).ToList();
 	}
 
 	void ExecuteActions()
 	{
 		GetMyPacs().ForEach(p => p.ExecuteAction());
 		Console.WriteLine();
-		//Debug($"{this.StopWatch.ElapsedMilliseconds}ms");
+		Debug($"{this.StopWatch.ElapsedMilliseconds}ms");
+		this.Turn++;
 	}
 
 	Vector2 SPEED_GetNearestPelletFromPellet(Vector2 p)
@@ -500,8 +530,78 @@ public class Game{
 		return (p);
 	}
 
+	public int BfsDepth(Vector2 start, Vector2 end)
+	{
+		Queue<(Vector2, int)> q = new Queue<(Vector2, int)>();
+		q.Enqueue((start, 0));
+
+		bool[,] visited = new bool[Grid.Width,Grid.Height];
+		visited[(int)start.X, (int)start.Y] = true;
+
+		while (q.Any())
+		{
+			(Vector2 node, int depth) = q.Dequeue();
+			List<Vector2> neighbours = Grid.GetWalkableNeibours(node);
+
+			foreach (Vector2 v in neighbours)
+			{
+				if (visited[(int)v.X, (int)v.Y])
+					continue;
+				if (v == end)
+					return(depth + 1);
+				q.Enqueue((v, depth + 1));
+				visited[(int)v.X, (int)v.Y] = true;
+			}
+		}
+		return (0);
+	}
+	public List<Vector2> BfsPath(Vector2 start, Vector2 end)
+	{
+		Queue<Vector2> q = new Queue<Vector2>();
+		q.Enqueue(start);
+
+		bool[,] visited = new bool[Grid.Width,Grid.Height];
+		visited[(int)start.X, (int)start.Y] = true;
+
+		Stack<(Vector2 actual, Vector2 prev)> lookup = new Stack<(Vector2, Vector2)>();
+		while (q.Any())
+		{
+			Vector2 node = q.Dequeue();
+			List<Vector2> neighbours = Grid.GetWalkableNeibours(node);
+
+			foreach (Vector2 v in neighbours)
+			{
+				if (visited[(int)v.X, (int)v.Y])
+					continue;
+				q.Enqueue(v);
+				visited[(int)v.X, (int)v.Y] = true;
+				lookup.Push((v, node));
+				if (v == end)
+					goto End;
+			}
+		}
+		End:
+		List<Vector2> result = new List<Vector2>();
+		
+		var tmp = lookup.Pop();
+	 	Vector2 prev = tmp.prev;
+	 	result.Add(tmp.actual);
+		while(lookup.Any())
+		{
+			while (tmp.actual != prev)
+				tmp = lookup.Pop();
+			result.Insert(0, tmp.actual);
+			prev = tmp.prev;
+		}
+		return (result);
+	}
+
 	public void Play()
 	{
+		var lst = BfsPath(new Vector2(10, 5), new Vector2(7, 3));
+
+		lst.ForEach(e => Debug(e.ToString()));
+
 		// reset target pellet if pellet not target not exist anymore
 		foreach (Pac pa in GetMyPacs().Where(p => p.Action.HasAction).ToList())
 		{
@@ -513,8 +613,9 @@ public class Game{
 		List<Pellet> bigPellets = Pellets.Where(p => p.Value == 10).ToList();
 		foreach (Pellet pe in bigPellets)
 		{
-			Pac pa = GetMyPacs().OrderBy(p => p.Distance(pe)).First();
-			if (!pa.Action.HasAction || pe.Distance(pa) < pa.Distance(pa.Action.TargetPosition))
+			Pac pa = GetMyPacs().OrderBy(p => p.Distance(this, pe)).First();
+
+			if (!pa.Action.HasAction || pe.Distance(this, pa) < pa.Distance(this, pa.Action.TargetPosition))
 				pa.Move(pe);
 		}
 
@@ -523,7 +624,7 @@ public class Game{
 		{
 
 //		if (!p.Action.HasAction)
-		if (!p.Action.HasAction || (p.Action.TargetEntity is Pellet pel && pel.Value == 1))
+			if (!p.Action.HasAction || (p.Action.TargetEntity is Pellet pel && pel.Value == 1))
 			{
 				List<Pellet>  AlreadyTargeted = GetMyPacs().Select(e => e.Action.TargetEntity).Where(e => e != null).Cast<Pellet>().ToList();
 
@@ -539,7 +640,7 @@ public class Game{
 				List<Entity> AlreadyTargeted = GetMyPacs().Where(e => e.Id != p.Id).Select(e => e.Action.TargetEntity).ToList();
 
 				var  target = Grid.Map.Cast<Cell>().Where(e => e.HasPellet).Select(e => e.Inside).Cast<Pellet>()
-										.Except(AlreadyTargeted).OrderBy(e => p.Distance(e.Position)).FirstOrDefault();
+										.Except(AlreadyTargeted).OrderBy(e => p.Distance(this, e.Position)).FirstOrDefault();
 				if (target != null)
 					p.Move(target.Position);
 			}
@@ -547,7 +648,7 @@ public class Game{
 
 		// If speed, be sure to target the second nearest pellet from the first one 
 		foreach (Pac p in GetMyPacs().FindAll(p => p.SpeedTurnsLeft > 0))
-		 	if (p.Distance(p.Action.TargetPosition) <= 1)
+		 	if (p.Distance(this, p.Action.TargetPosition) <= 1)
 		 		p.Move(SPEED_GetNearestPelletFromPellet(p.Action.TargetPosition));
 		
 		
@@ -560,54 +661,6 @@ public class Game{
 			if (GetOpponentPacs().Any(o => this.IsDirectPath(p, o)))
 				p.Label = "Hi !";
 		}
-		
-		
-
-		if (GetMyPacs().First().Positions.Count() > 2)
-		{
-			List<Pac> blockedPacs = 
-				GetMyPacs().Where(e => e.Positions.Last() == e.Positions.TakeLast(2).First() 
-			&&   e.PreviousAction.IsMove).ToList();
-
-			Debug(blockedPacs.Count() + "");
-			foreach (Pac p in blockedPacs.ToList())
-			{
-				Debug("Pac " + p.Id + "Blocked");
-				blockedPacs.Remove(p);
-
-				List<Pac> otherBlockedNear = blockedPacs.FindAll(e => e.Distance(p) < 1.5);
-
-				otherBlockedNear.ForEach(e => e.Action = new Action(e.Position));
-				//blockedPacs.RemoveRange(otherBlockedNear);
-			}		
-		}
-
-
-
-
-
-		// foreach (Pac p in GetMyPacs())
-		// {
-		// 	p.Label = p.Type.ToString();
-		// }
-
-
-		// foreach (Pac p in GetMyPacs())
-		// {
-		// 	// if (p.Positions.Count() < 3)
-		// 	// 	continue;
-		// 	List<Vector2> lastPos = p.Positions.TakeLast(3).ToList();
-		
-		// 	// Debug(lastPos.First().ToString());
-		// 	// Debug(lastPos.Last().ToString());
-		// 	Debug( "HERE " + lastPos.Count().ToString());
-		// 	// Debug(p.Positions.Count().ToString());
-		// 	if (lastPos.Count() == 3 && p.PreviousAction.Type != eAction.Switch
-		// 	&&  lastPos.First() == lastPos.Last()
-		// 	&&  lastPos.First() == lastPos.Skip(1).First()
-		// 	)
-		// 		p.SwitchClockwise();
-		// }
 
 		this.ExecuteActions();
 	}
