@@ -600,7 +600,8 @@ public class Game{
 		{
 			while (tmp.actual != prev && lookup.Any())
 				tmp = lookup.Pop();
-			result.Insert(0, tmp.actual);
+			if (tmp.actual == prev)
+				result.Insert(0, tmp.actual);
 			prev = tmp.prev;
 		}
 		return (result);
@@ -646,7 +647,8 @@ public class Game{
 		{
 			while (tmp.actual != prev && lookup.Any())
 				tmp = lookup.Pop();
-			result.Insert(0, tmp.actual);
+			if (tmp.actual == prev)
+				result.Insert(0, tmp.actual);
 			prev = tmp.prev;
 		}
 		return (result);
@@ -697,7 +699,8 @@ public class Game{
 		{
 			while (tmp.actual != prev && lookup.Any())
 				tmp = lookup.Pop();
-			result.Insert(0, tmp.actual);
+			if (tmp.actual == prev)
+				result.Insert(0, tmp.actual);
 			prev = tmp.prev;
 		}
 		return (result);
