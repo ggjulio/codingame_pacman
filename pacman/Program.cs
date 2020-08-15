@@ -143,9 +143,11 @@ public class Pac : Entity
 	public string Label{get;set;}
 	public Action Action{get;set;}
 	public Action PreviousAction{get;set;}
+	public int TargetLabelArea{get;set;}
+
 
 	public Pac(int id, bool mine, ushort turn, Vector2 position, string typeId,
-		int speedTurnsLeft, int abilityCooldown) : base(position)
+		int speedTurnsLeft, int abilityCooldown, bool isVisible) : base(position)
 	{
 		this.Id = id;
 		this.Mine = mine;
@@ -158,7 +160,7 @@ public class Pac : Entity
 		this.AbilityCooldown = abilityCooldown;
 		this.IsAlive = this.Type != eSwitch.DEAD ? true : false;
 		this.Action = new Action();
-		this.IsVisible = true;
+		this.IsVisible = isVisible;
 	}
 
 	public void Update(ushort turn, Vector2 position, string typeId, int speedTurnsLeft, int abilityCooldown)
@@ -257,7 +259,7 @@ public class Pac : Entity
 	}
 	public override string ToString()
 	{
-		return $"Pac(Id:{Id}; Mine:{Mine}; Position:{Position};\n    SpeedStep:{SpeedStep}; SpeedTurnsLeft:{SpeedTurnsLeft}; AbilityCooldown:{AbilityCooldown})";
+		return $"Pac(Id:{Id}; Mine:{Mine}; Position:{Position}; IsVisible:{IsVisible}\n    SpeedStep:{SpeedStep}; SpeedTurnsLeft:{SpeedTurnsLeft}; AbilityCooldown:{AbilityCooldown})";
 	}
 }
 
@@ -278,6 +280,7 @@ public class Cell
 	public bool	  	HasPellet{get;set;}
 	public bool	  	HasMyPac{get;set;}
 	public bool	  	HasOpponentPac{get;set;}
+	public int		Label{get; set;}
 	public Entity 	Inside{get; set;}	
 	public Vector2	Position{get;}
 	public Cell(char cell, Vector2 position)
@@ -313,6 +316,7 @@ public class Grid
 	public int Height{get; set;}
 	public int Width{get; set;}
 	public Cell[,] Map{get; set;}
+	public List<int> Labels{get;set;}
 
 	public Grid(int width, int height)
 	{
@@ -412,7 +416,32 @@ public class Grid
 		}
 		return result;
 	}
-	public List<Vector2> GetWalkableNeibours(Vector2 v)
+	public string ConnectedComponentToString()
+	{
+		string result = "";
+
+		for (int i = 0; i < this.Height; i++)
+		{
+			for (int j = 0; j < this.Width; j++)
+			{
+				if (this.Map[j,i].HasPellet)
+				{
+					if (this.Map[j,i].Label <= 9)
+						result += this.Map[j,i].Label;
+					else
+						result += (char)((this.Map[j,i].Label) + 'a' - 10);
+				}
+				else if (this.Map[j, i].Inside != null && this.Map[j,i].Inside is Pac pa)
+					result += "*";			
+				else
+					result += this.Map[j, i].IsWalkable ? " " : " ";			
+			}
+			result += "\n";
+		}
+		return result;
+	}
+	
+	public List<Vector2> GetWalkableNeighbors(Vector2 v)
 	{
 		List<Vector2> result = new List<Vector2>();
 
@@ -435,7 +464,100 @@ public class Grid
 		}
 		return (result);
 	}
-	public List<Vector2> GetWalkableNeiboursPacsAsWall(Vector2 v)
+
+	public void GridComponentLabeling()
+	{
+  		// reset label at 0;
+		foreach (Cell c in Map)
+			this.Map[(int)c.Position.X, (int)c.Position.Y].Label = 0;
+
+		int label_inc = 0;
+		int[] linkedLabel = new int[Height * Width];
+		// First pass
+		linkedLabel[0] = -1;
+		for (int row = 0; row < this.Height; row++)
+			for (int column = 0; column < this.Width; column++)
+			{	
+				if (!Map[column,row].IsWalkable)
+					continue;
+				if (Map[column,row].HasPellet)
+				{
+					List<Vector2> neighbors =  GetNeighborsWhere(new Vector2(column, row), e => e.HasPellet);
+					
+					List<int> neighborsLabels = neighbors.Select(n => this.Map[(int)n.X,(int)n.Y].Label).ToList();
+					if (neighbors.Any() && neighborsLabels.Where(n => n > 0).Any())
+					{
+
+						int minLabel = neighborsLabels.Where(n => n > 0).Min();
+						this.Map[column, row].Label =  UnionLabel(linkedLabel, neighborsLabels, minLabel);
+
+						neighborsLabels = neighborsLabels.ToList();
+						foreach (int label in neighborsLabels)
+							linkedLabel[label] =  UnionLabel(linkedLabel, neighborsLabels, minLabel);
+					}
+					else
+					{
+						label_inc++;
+						this.Map[column, row].Label = label_inc;
+
+						linkedLabel[label_inc] = label_inc;
+					}
+				}
+			}
+
+#region Debug 
+		string s = "";
+		for (int i = 0; i < 20; i++)
+			s += " (" + i + "=>" + linkedLabel[i] + ") ";
+		Game.Debug(s);
+#endregion
+
+		// Second pass
+		for (int row = 0; row < this.Height; row++)
+			for (int column = 0; column < this.Width; column++)
+				if (Map[column,row].HasPellet)
+					Map[column, row].Label = FindLabel(linkedLabel, this.Map[column, row].Label);
+
+		//Save labels
+		this.Labels = new List<int>();
+		for (int i = 0; i < Height * Width; i++)
+			if ( i == linkedLabel[i])
+				this.Labels.Add(i);
+		//Order label by size
+		this.Labels = Labels.OrderByDescending(e => Map.Cast<Cell>().Where(c => c.Label == e).Count()).ToList();
+	}
+	private int FindLabel(int[] linkedLabel, int toFind)
+	{
+
+		while(linkedLabel[toFind] != toFind)
+			toFind = linkedLabel[toFind];
+		return toFind;
+	}
+	private int UnionLabel(int[] linkedLabel, List<int> neighborsLabels , int toFind)
+	{
+		int lowest = toFind;
+
+		while(linkedLabel[toFind] != toFind)
+		{
+			toFind = linkedLabel[toFind];
+			if (toFind < lowest)
+				lowest = toFind;
+		}
+		foreach (int item in neighborsLabels)
+		{
+			while(linkedLabel[toFind] != toFind)
+			{
+				toFind = linkedLabel[toFind];
+				if (toFind < lowest)
+					lowest = toFind;
+			}
+		}
+		if (toFind == 0)
+			return 0;
+		return lowest;
+	}
+
+	public List<Vector2> GetWalkableNeighborsPacsAsWall(Vector2 v)
 	{
 		List<Vector2> result = new List<Vector2>();
 
@@ -463,7 +585,7 @@ public class Grid
 		}
 		return (result);
 	}
-	public List<Vector2> GetNeiboursWhere(Vector2 v, Predicate<Cell> predicate)
+	public List<Vector2> GetNeighborsWhere(Vector2 v, Predicate<Cell> predicate)
 	{
 		List<Vector2> result = new List<Vector2>();
 
@@ -540,10 +662,26 @@ public class Game{
 
 			Pac pac = Pacs.Find(e => e.Id == pacId && e.Mine == mine);
 			if (pac == null)
-				this.Pacs.Add(new Pac(pacId, mine, this.Turn, position, typeId, speedTurnsLeft, abilityCooldown));
+				this.Pacs.Add(new Pac(pacId, mine, this.Turn, position, typeId, speedTurnsLeft, abilityCooldown, true));
 			else
 				pac.Update(this.Turn, position, typeId, speedTurnsLeft, abilityCooldown);	
 		}
+		// if first turn :  set ennemy position related to my position
+		if (this.Turn == 0)
+			foreach (Pac p in GetMyPacs())
+			{
+				Pac pac = Pacs.Find(e => e.Id == p.Id && e.Mine == false);
+				if (pac != null) // if pac not null, we already see the ennemy
+					continue;
+
+				Vector2 opponentPos = new Vector2();
+				int middleMap = (Grid.Width - 1) / 2;
+
+				opponentPos.X = middleMap - p.Position.X + middleMap;
+				opponentPos.Y = p.Position.Y;
+				this.Pacs.Add(new Pac(p.Id, false, this.Turn, opponentPos, p.TypeId, p.SpeedTurnsLeft, p.AbilityCooldown, false));
+			}
+
 
 		// LOOP PELLETS
 		this.VisiblePelletCount = int.Parse(Console.ReadLine()); // all pellets in sight
@@ -557,6 +695,8 @@ public class Game{
 			int value = int.Parse(inputs[2]); // amount of points this pellet is worth
 			this.Pellets.Add(new Pellet(position, value));
 		}
+
+		//Update grid
 		this.Grid.Update(this.Pacs, this.Pellets);
 	}
 	public static void Debug(string message)
@@ -574,6 +714,12 @@ public class Game{
 	public List<Pellet> GetPelletsNearest(Entity p_e)
 	{
 		return this.Pellets.OrderBy(e => e.Distance(this, p_e)).ToList();
+	}
+	public List<Pellet> GetPelletsFromAreaNearest(int label, Entity p_e)
+	{
+		return
+		Grid.Map.Cast<Cell>().Where(c => c.Label == label)
+		.Select(c => c.Inside as Pellet).ToList().OrderBy(e => e.Distance(this, p_e)).ToList();
 	}
 	public List<Pellet> GetPelletsNearest(Vector2 p_v)
 	{
@@ -618,7 +764,7 @@ public class Game{
 	{
 		return this.Pellets.Where(e => this.IsDirectPath(e, p_e) ).OrderBy(e => e.Distance(this, p_e)).ToList();
 	}
-	public List<Vector2> BfsPathWhere(Vector2 start, Predicate<Cell> neighboursPredicate, Predicate<Cell> endPredicate)
+	public List<Vector2> BfsPathWhere(Vector2 start, Predicate<Cell> neighborsPredicate, Predicate<Cell> endPredicate)
 	{
 		bool found = false;
 		Queue<Vector2> q = new Queue<Vector2>();
@@ -631,9 +777,9 @@ public class Game{
 		while (q.Any())
 		{
 			Vector2 node = q.Dequeue();
-			List<Vector2> neighbours = Grid.GetNeiboursWhere(node, neighboursPredicate);
+			List<Vector2> neighbors = Grid.GetNeighborsWhere(node, neighborsPredicate);
 
-			foreach (Vector2 v in neighbours)
+			foreach (Vector2 v in neighbors)
 			{
 				if (visited[(int)v.X, (int)v.Y])
 					continue;
@@ -663,7 +809,6 @@ public class Game{
 		}
 		return (result);
 	}
-
 	void ExecuteActions()
 	{
 		GetMyPacs().ForEach(p => p.ExecuteAction());
@@ -687,8 +832,8 @@ public class Game{
 		 		         return (Grid.Map[(int)p.X, (int)p.Y + 1].Position);
 		return (p);
 	}
-	
-	public int BfsDepthWhere(Vector2 start, Predicate<Cell> neighboursPredicate, Predicate<Cell> endPredicate)
+
+	public int BfsDepthWhere(Vector2 start, Predicate<Cell> neighborsPredicate, Predicate<Cell> endPredicate)
 	{
 		Queue<(Vector2, int)> q = new Queue<(Vector2, int)>();
 		q.Enqueue((start, 0));
@@ -701,8 +846,8 @@ public class Game{
 		while (q.Any())
 		{
 			(Vector2 node, int depth) = q.Dequeue();
-			List<Vector2> neighbours = Grid.GetNeiboursWhere(node, neighboursPredicate);
-			foreach (Vector2 v in neighbours)
+			List<Vector2> neighbors = Grid.GetNeighborsWhere(node, neighborsPredicate);
+			foreach (Vector2 v in neighbors)
 			{
 				if (visited[(int)v.X, (int)v.Y])
 					continue;
@@ -725,9 +870,9 @@ public class Game{
 		while (q.Any())
 		{
 			(Vector2 node, int depth) = q.Dequeue();
-			List<Vector2> neighbours = Grid.GetWalkableNeibours(node);
+			List<Vector2> neighbors = Grid.GetWalkableNeighbors(node);
 
-			foreach (Vector2 v in neighbours)
+			foreach (Vector2 v in neighbors)
 			{
 				if (visited[(int)v.X, (int)v.Y])
 					continue;
@@ -751,9 +896,9 @@ public class Game{
 		while (q.Any())
 		{
 			(Vector2 node, int depth) = q.Dequeue();
-			List<Vector2> neighbours = Grid.GetWalkableNeiboursPacsAsWall(node);
+			List<Vector2> neighbors = Grid.GetWalkableNeighborsPacsAsWall(node);
 
-			foreach (Vector2 v in neighbours)
+			foreach (Vector2 v in neighbors)
 			{
 				if (visited[(int)v.X, (int)v.Y])
 					continue;
@@ -778,9 +923,9 @@ public class Game{
 		while (q.Any())
 		{
 			Vector2 node = q.Dequeue();
-			List<Vector2> neighbours = Grid.GetNeiboursWhere(node, n => n.IsWalkable);
+			List<Vector2> neighbors = Grid.GetNeighborsWhere(node, n => n.IsWalkable);
 
-			foreach (Vector2 v in neighbours)
+			foreach (Vector2 v in neighbors)
 			{
 				if (visited[(int)v.X, (int)v.Y])
 					continue;
@@ -824,9 +969,9 @@ public class Game{
 		while (q.Any())
 		{
 			Vector2 node = q.Dequeue();
-			List<Vector2> neighbours = Grid.GetWalkableNeiboursPacsAsWall(node);
+			List<Vector2> neighbors = Grid.GetWalkableNeighborsPacsAsWall(node);
 
-			foreach (Vector2 v in neighbours)
+			foreach (Vector2 v in neighbors)
 			{
 				if (visited[(int)v.X, (int)v.Y])
 					continue;
@@ -834,7 +979,7 @@ public class Game{
 				visited[(int)v.X, (int)v.Y] = true;
 				lookup.Push((v, node));
 				if (Grid.Map[(int)v.X, (int)v.Y].HasPellet 
-					&& Grid.GetNeiboursWhere(v, c => !(c.Inside is Pac po && !po.Mine )).Any())
+					&& Grid.GetNeighborsWhere(v, c => !(c.Inside is Pac po && !po.Mine )).Any())
 					goto End;
 			}
 		}
@@ -857,14 +1002,16 @@ public class Game{
 		return (result);
 	}
 
-	// public void Dfs(Vector2 start, Vector2 end)
-	// {
-
-	// }
-
-
+	
 	public void Play()
 	{
+		Grid.GridComponentLabeling();
+
+		Debug(">> " + GetPelletsFromAreaNearest(1, GetMyPacs().First()).First().ToString());
+
+		Debug(Grid.ConnectedComponentToString());
+		GetMyPacs().ForEach(p=> p.TargetLabelArea = 0);
+
 		// reset target pellet if pellet not target not exist anymore
 		foreach (Pac pa in GetMyPacs().Where(p => p.Action.HasAction).ToList())
 				pa.Action = new Action();
@@ -885,11 +1032,15 @@ public class Game{
 			p.Move(GetVisiblePelletsNearest(p).Except(AlreadyTargeted).FirstOrDefault());
 			if (!p.Action.HasAction) // If can't see pellets go where we never go
 			{
-				var target = BfsPathWhere(p.Position, c => c.IsWalkable, c => c.HasPellet);
-				if (target.Any())
-					p.Move(target.Last());
+				if (!p.Action.HasAction) // If can't see pellets go where we never go
+				{
+					var target = BfsPathWhere(p.Position, c => c.IsWalkable, c => c.HasPellet);
+					if (target.Any())
+						p.Move(target.Last());
+				}
 			}
 		}
+		GetMyPacs().ForEach(p=> Debug(p.Id + " >> " + p.TargetLabelArea.ToString()));
 
 		// If speed, be sure to target the second nearest pellet from the first one 
 		foreach (Pac p in GetMyPacs().FindAll(p => p.SpeedTurnsLeft > 0))
@@ -959,8 +1110,6 @@ public class Game{
 					p.SwitchToEat(opponents.First());
 			}
 		}
-
-		
 
 		//Say Hi
 		foreach (Pac p in GetMyPacs())
